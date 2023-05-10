@@ -1,0 +1,171 @@
+---
+title: "Applied Regression Project"
+author: "Charlie Krebs"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE,
+                      fig.align = 'center')
+library(tidyverse)
+library(tinytex)
+library(mice)
+library(caret)
+```
+
+`Data`
+```{r}
+dat <- read.csv("concrete_data_final.csv")
+```
+
+`Data Summary`
+```{r}
+summary(dat)
+```
+
+<br>
+<center>
+Looking at the summary of the data, the main point to note is the large amounts of missing data in the `blast_furnace_slag`, `fly_ash`, and `superplasticizer` variables. Another point to note is that some of the variables (`superplasticizer` for example) looked a little bit skewed, so preprocessing will be done.
+</center>
+<br>
+
+`Visualizations`
+```{r}
+plot(dat)
+```
+
+<br>
+<center>
+We are looking at modeling `strength` on the other variables, so the plots of the strength versus the other variables can be seen along the bottom row and the far right column.
+</center>
+<br>
+
+`Missing Data`
+```{r}
+md.pattern(dat)
+```
+
+<br>
+<center>
+There is missing data in the `superplasticizer`, `blast_furnace_slag`, and `fly_ash` variables.
+</center>
+<br>
+
+`Imputation`
+```{r}
+dat_miss <- mice(dat, m = 1)
+dat_imp <- complete(dat_miss)
+
+md.pattern(dat_imp)
+```
+
+`Preprocessing`
+```{r}
+pre_process_mod <- preProcess(dat_imp, method = c("YeoJohnson", "center", "scale"))
+dat_processed <- predict(pre_process_mod, newdata = dat_imp)
+```
+
+<br>
+<center>
+The data was preprocessed by centering, scaling, and Yeo Johnson transforming after imputation.
+</center>
+<br>
+
+`Test/Train Sets`
+```{r}
+ind_train <- sample(1:1030, .7 * 1030)
+dat_train <- dat_processed[ind_train,]
+dat_test <- dat_processed[-ind_train,]
+```
+
+
+`Identifying Outliers`
+```{r}
+train_mod <- lm(strength ~ ., data = dat_train)
+test_mod <- lm(strength ~ ., data = dat_test)
+
+plot(train_mod)
+plot(test_mod)
+```
+
+<br>
+<center>
+Based on the residuals versus leverage plots, there are no outliers in either the training or testing data. I think that deskewing the variables helped to handle the potential outliers.
+</center>
+<br>
+
+`Modeling`
+```{r}
+cv_5 <- trainControl(method = "repeatedcv",
+                     number = 10,
+                     repeats = 5)
+
+aic_mod <- train(strength ~ ., 
+                 data = dat_train,
+                 method = "lmStepAIC",
+                 trControl = cv_5,
+                 trace = 0)
+ridge_mod <- train(strength ~ ., 
+                   data = dat_train, 
+                   trControl = cv_5, 
+                   method = "ridge")
+glm_mod <- train(strength ~ ., 
+                   data = dat_train, 
+                   trControl = cv_5, 
+                   method = "glm")
+```
+
+<br>
+<center>
+I used AIC, ridge regression, and glm to model the data with cross-validation.
+</center>
+<br>
+
+`Results`
+```{r}
+aic_mod$results[2]
+aic_mod$results[2] - (2 * aic_mod$results[5])
+aic_mod$results[2] + (2 * aic_mod$results[5])
+```
+
+<br>
+<center>
+The first value is the expected RMSE for the AIC model. The second and third values are the interval for the expected RMSE.
+</center>
+<br>
+
+```{r}
+ridge_mod$results[1,2]
+ridge_mod$results[2,2] - (2 * ridge_mod$results[2,5])
+ridge_mod$results[2,2] + (2 * ridge_mod$results[2,5])
+```
+
+<br>
+<center>
+The first value is the expected RMSE for the ridge model. The second and third values are the interval for the expected RMSE.
+</center>
+<br>
+
+```{r}
+glm_mod$results[2]
+glm_mod$results[2] - (2 * glm_mod$results[5])
+glm_mod$results[2] + (2 * glm_mod$results[5])
+```
+
+<br>
+<center>
+The first value is the expected RMSE for the generalized linear model. The second and third values are the interval for the expected RMSE.
+</center>
+<br>
+
+
+`Conclusions`
+<br>
+<center>
+Based on the results from the models, all three models that I used gave relatively the same expected RMSE. The ridge regression had the smallest expected RMSE with the AIC model just behind and then the glm. The generalized linear model had the smallest interval for the possible RMSE values for the future cement predictions. The other two models had larger intervals than the glm. All three models gave expected RMSE values that were very small. This is good because it shows that they do a good job in modeling the data. Since the models did have very similar expected RMSE values, I think that I would choose the generalized linear model as the best model for this data. Overall, all three models proved to be good representations of the cement data.
+</center>
+<br>
